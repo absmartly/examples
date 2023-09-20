@@ -8,50 +8,86 @@ app.use(bodyParser.json());
 const PORT = process.env.PORT || 3000;
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
+const SLACK_TOKEN = process.env.SLACK_TOKEN || "";
 const WEB_CONSOLE_URL = process.env.WEB_CONSOLE_URL || "";
 const ABSMARTLY_USER_API_KEY = process.env.ABSMARTLY_USER_API_KEY || "";
 
-const postToSlack = async (
-  message: Record<string, unknown>,
-  settings: { webhookUrl: string }
-) => {
-  const eventName = message.event_name as string;
+const capitalize = (str: string) => {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+};
+
+const postToSlack = async (message: Record<string, unknown>) => {
+  return await axios.post(SLACK_WEBHOOK_URL, message);
+};
+
+const handleEvent = async (event: Record<string, unknown>) => {
+  const eventName = event.event_name as string;
+
+  const config = {
+    headers: {
+      Authorization: `Api-Key ${ABSMARTLY_USER_API_KEY}`,
+    },
+  };
 
   if (eventName.includes("Alert")) {
   }
 
   if (eventName.includes("Experiment")) {
-    const experimentId = message.id as string;
-    const { data } = await axios.get(
+    const action = eventName.slice(10).toLowerCase();
+    const experimentId =
+      action === "restarted"
+        ? (event.new_experiment_id as string)
+        : (event.id as string);
+
+    const experimentName = event.name as string;
+    const userId = event.user_id as string;
+    const date = new Date(event.event_at as string).toLocaleString();
+
+    const { data: experimentRes } = await axios.get(
       `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
+      config
+    );
+    const { data: userRes } = await axios.get(
+      `${WEB_CONSOLE_URL}/v1/users/${userId}`,
+      config
+    );
+
+    // @ts-ignore
+    const { experiment } = experimentRes;
+    const { user } = userRes;
+    const userEmail = user.email as string;
+
+    const { data: slackUserRes } = await axios.post(
+      "https://slack.com/api/users.lookupByEmail",
+      {
+        email: userEmail,
+      },
       {
         headers: {
-          Authorization: `Api-Key ${ABSMARTLY_USER_API_KEY}`,
+          Authorization: `Bearer ${SLACK_TOKEN}`,
+          "Content-Type": "multipart/form-data",
         },
       }
     );
 
-    const { experiment } = data;
+    const slackUserId = slackUserRes.user.id;
 
-    return await axios.post(settings.webhookUrl, {
-      text: "Alert",
+    return await postToSlack({
+      text: "Experiment Event",
       blocks: [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `🧪 Experiment ${capitalize(action)}`,
+            emoji: true,
+          },
+        },
         {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: Object.entries(message)
-              .map((entry) => {
-                switch (entry[0]) {
-                  case "id":
-                    return [
-                      `Experiment: <${WEB_CONSOLE_URL}/experiments/${experimentId}|${experiment.name}>`,
-                    ];
-                  default:
-                    return entry.join(": ");
-                }
-              })
-              .join("\n"),
+            text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> was ${action} by <@${slackUserId}> at ${date}`,
           },
         },
       ],
@@ -66,14 +102,14 @@ const postToSlack = async (
     return;
   }
 
-  return await axios.post(settings.webhookUrl, {
+  return await postToSlack({
     text: "Event",
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: JSON.stringify(message, null, 2),
+          text: JSON.stringify(event, null, 2),
         },
       },
     ],
@@ -87,9 +123,7 @@ const handleWebhookPayload = async (payload: {
 
   await Promise.all(
     events.map(async (event) => {
-      await postToSlack(event, {
-        webhookUrl: SLACK_WEBHOOK_URL,
-      });
+      await handleEvent(event);
     })
   );
 };
