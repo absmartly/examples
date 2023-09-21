@@ -80,13 +80,13 @@ const handleEvent = async (event: Record<string, unknown>) => {
         }
     );
 
-    const slackUserId = slackUserRes.user.id;
+    const slackUserId = slackUserRes.ok ? slackUserRes.user.id : null;
 
     blocks.push({
         type: "section",
         text: {
             type: "mrkdwn",
-            text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> was ${action} by <@${slackUserId}> at ${date}`,
+            text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> was ${action} by ${slackUserId ? `<@${slackUserId}>` : `<mailto:${userEmail}|${user.first_name} ${user.last_name}>`} at ${date}} `,
         }
     })
 
