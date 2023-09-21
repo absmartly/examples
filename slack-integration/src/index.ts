@@ -29,6 +29,8 @@ const handleEvent = async (event: Record<string, unknown>) => {
     },
   };
 
+  const blocks = [];
+
   if (eventName.includes("Alert")) {
   }
 
@@ -43,54 +45,75 @@ const handleEvent = async (event: Record<string, unknown>) => {
     const userId = event.user_id as string;
     const date = new Date(event.event_at as string).toLocaleString();
 
-    const { data: experimentRes } = await axios.get(
-      `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
-      config
-    );
+    blocks.push({
+        type: "header",
+        text: {
+            type: "plain_text",
+            text: `🧪 Experiment ${capitalize(action)}`,
+            emoji: true,
+        }
+    })
+
     const { data: userRes } = await axios.get(
       `${WEB_CONSOLE_URL}/v1/users/${userId}`,
       config
     );
 
-    // @ts-ignore
-    const { experiment } = experimentRes;
     const { user } = userRes;
     const userEmail = user.email as string;
 
     const { data: slackUserRes } = await axios.post(
-      "https://slack.com/api/users.lookupByEmail",
-      {
-        email: userEmail,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${SLACK_TOKEN}`,
-          "Content-Type": "multipart/form-data",
+        "https://slack.com/api/users.lookupByEmail",
+        {
+          email: userEmail,
         },
-      }
+        {
+          headers: {
+            Authorization: `Bearer ${SLACK_TOKEN}`,
+            "Content-Type": "multipart/form-data",
+          },
+        }
     );
 
     const slackUserId = slackUserRes.user.id;
 
-    return await postToSlack({
-      text: "Experiment Event",
-      blocks: [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: `🧪 Experiment ${capitalize(action)}`,
-            emoji: true,
-          },
-        },
-        {
-          type: "section",
-          text: {
+    blocks.push({
+        type: "section",
+        text: {
             type: "mrkdwn",
             text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> was ${action} by <@${slackUserId}> at ${date}`,
-          },
-        },
-      ],
+        }
+    })
+
+    if (eventName === "ExperimentCreated") {
+      const { data: experimentRes } = await axios.get(
+          `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
+          config
+      );
+      const { experiment } = experimentRes;
+
+      blocks.push({
+        type: "section",
+        text: {
+            type: "mrkdwn",
+            text: `*Analysis Type:* ${experiment.analysis_type}`
+        }
+      })
+
+      const percentages = experiment.percentages.split("/");
+
+      blocks.push({
+        type: "section",
+        fields: experiment.variants.map((variant: {name:string, variant: number}, index: number) => ({
+            type: "mrkdwn",
+            text: variant.name !== "" ? `*${variant.name} (${percentages[index]}%)*` : `*Variant ${String.fromCharCode(65 + variant.variant)} (${percentages[index]}%)*`
+        }))
+      })
+    }
+
+    return await postToSlack({
+      text: "Experiment Event",
+      blocks,
     });
   }
 
