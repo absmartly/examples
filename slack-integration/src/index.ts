@@ -1,50 +1,23 @@
 import "dotenv/config";
 import express from "express";
 import bodyParser from "body-parser";
-import axios from "axios";
+import { getExperiment, getSlackUserByEmail, getUser, postToSlack } from "./api";
+import { ABSmartlyEvent } from "./models";
+import { extractAction, capitalize, capitalizeKebabCase, isPositiveAlert } from "./utils";
 
 const app = express();
 app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3000;
 
-const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
-const SLACK_TOKEN = process.env.SLACK_TOKEN || "";
 const WEB_CONSOLE_URL = process.env.WEB_CONSOLE_URL || "";
-const ABSMARTLY_USER_API_KEY = process.env.ABSMARTLY_USER_API_KEY || "";
 
-const capitalize = (str: string) => {
-	return str.charAt(0).toUpperCase() + str.slice(1);
-};
-
-const capitalizeKebabCase = (analysisType: string) => {
-	return analysisType.split("_").map(capitalize).join(" ");
-};
-
-const postToSlack = async (message: Record<string, unknown>) => {
-	return await axios.post(SLACK_WEBHOOK_URL, message);
-};
-
-const handleEvent = async (event: Record<string, unknown>) => {
-	console.log(event);
-	const eventName = event.event_name as string;
-
-	const config = {
-		headers: {
-			Authorization: `Api-Key ${ABSMARTLY_USER_API_KEY}`,
-		},
-	};
-
+const handleEvent = async (event: ABSmartlyEvent) => {
+	const eventName = event.event_name;
 	const blocks = [];
 
 	if (eventName.includes("Alert")) {
 		const experimentId = event.experiment_id as string;
-
-		const blocks = [];
-
-		const isPositiveAlert = (event: Record<string, unknown>) => {
-			return ["sample_size_reached", "group_sequential_updated"].includes(event.type as string);
-		};
 
 		blocks.push({
 			type: "header",
@@ -55,11 +28,11 @@ const handleEvent = async (event: Record<string, unknown>) => {
 			},
 		});
 
-		const { data: experimentRes } = await axios.get(`${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`, config);
+		const { data: experimentRes } = await getExperiment(experimentId);
 
 		const { experiment } = experimentRes;
 
-		const experimentName = experiment.name as string;
+		const experimentName = experiment.name;
 
 		blocks.push({
 			type: "section",
@@ -72,21 +45,30 @@ const handleEvent = async (event: Record<string, unknown>) => {
 		});
 
 		return await postToSlack({
-			text: "Alert",
-			blocks,
+			message: {
+				text: "Alert",
+				blocks,
+			},
 		});
 	}
 
 	if (eventName.includes("Experiment")) {
-		const action = eventName.slice(10).toLowerCase();
+		const action = extractAction(event);
 		const experimentId = action === "restarted" ? (event.new_experiment_id as string) : (event.id as string);
-
-		const { data: experimentRes } = await axios.get(`${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`, config);
-		const { experiment } = experimentRes;
 
 		const experimentName = event.name as string;
 		const userId = event.user_id as string;
 		const date = new Date(event.event_at as string).toLocaleString();
+
+		const { data: experimentRes } = await getExperiment(experimentId);
+		const { experiment } = experimentRes;
+
+		const { data: userRes } = await getUser(userId);
+		const { user } = userRes;
+
+		const userEmail = user.email as string;
+		const { data: slackUserRes } = await getSlackUserByEmail(userEmail);
+		const slackUserId = slackUserRes.ok ? slackUserRes.user.id : null;
 
 		blocks.push({
 			type: "header",
@@ -96,26 +78,6 @@ const handleEvent = async (event: Record<string, unknown>) => {
 				emoji: true,
 			},
 		});
-
-		const { data: userRes } = await axios.get(`${WEB_CONSOLE_URL}/v1/users/${userId}`, config);
-
-		const { user } = userRes;
-		const userEmail = user.email as string;
-
-		const { data: slackUserRes } = await axios.post(
-			"https://slack.com/api/users.lookupByEmail",
-			{
-				email: userEmail,
-			},
-			{
-				headers: {
-					Authorization: `Bearer ${SLACK_TOKEN}`,
-					"Content-Type": "multipart/form-data",
-				},
-			}
-		);
-
-		const slackUserId = slackUserRes.ok ? slackUserRes.user.id : null;
 
 		blocks.push({
 			type: "section",
@@ -150,7 +112,7 @@ const handleEvent = async (event: Record<string, unknown>) => {
 
 			blocks.push({
 				type: "section",
-				fields: experiment.variants.map((variant: { name: string; variant: number }, index: number) => ({
+				fields: experiment.variants.map((variant, index: number) => ({
 					type: "mrkdwn",
 					text:
 						variant.name !== ""
@@ -182,45 +144,17 @@ const handleEvent = async (event: Record<string, unknown>) => {
 			}
 		}
 
-		if (slackUserId) {
-			await axios.post(
-				"https://slack.com/api/chat.postMessage",
-				{
-					channel: slackUserId,
-					text: "Experiment Event",
-					blocks,
-				},
-				{
-					headers: {
-						Authorization: `Bearer ${SLACK_TOKEN}`,
-						"Content-Type": "application/json",
-					},
-				}
-			);
-		}
-
-		if (userId)
-			return await postToSlack({
+		return await postToSlack({
+			message: {
 				text: "Experiment Event",
 				blocks,
-			});
-	}
-
-	return await postToSlack({
-		text: "Event",
-		blocks: [
-			{
-				type: "section",
-				text: {
-					type: "mrkdwn",
-					text: JSON.stringify(event, null, 2),
-				},
 			},
-		],
-	});
+			userId: slackUserId,
+		});
+	}
 };
 
-const handleWebhookPayload = async (payload: { events: Record<string, unknown>[] }) => {
+const handleWebhookPayload = async (payload: { events: ABSmartlyEvent[] }) => {
 	const { events } = payload;
 
 	await Promise.all(
