@@ -91,6 +91,12 @@ const handleEvent = async (event: Record<string, unknown>) => {
         ? (event.new_experiment_id as string)
         : (event.id as string);
 
+    const { data: experimentRes } = await axios.get(
+      `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
+      config
+    );
+    const { experiment } = experimentRes;
+
     const experimentName = event.name as string;
     const userId = event.user_id as string;
     const date = new Date(event.event_at as string).toLocaleString();
@@ -139,13 +145,17 @@ const handleEvent = async (event: Record<string, unknown>) => {
       },
     });
 
-    if (eventName === "ExperimentCreated") {
-      const { data: experimentRes } = await axios.get(
-        `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
-        config
-      );
-      const { experiment } = experimentRes;
+    if (action === "restarted") {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Iteration:* ${experiment.iteration}`,
+        },
+      });
+    }
 
+    if (eventName === "ExperimentCreated") {
       blocks.push({
         type: "section",
         text: {
@@ -175,6 +185,25 @@ const handleEvent = async (event: Record<string, unknown>) => {
     }
 
     if (eventName === "ExperimentEdited") {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Changed Fields:*`,
+        },
+      });
+
+      const keysArray = Object.keys(event.changes as string);
+
+      for (let i = 0; i < Math.ceil(keysArray.length / 10); i++) {
+        blocks.push({
+          type: "section",
+          fields: keysArray.slice(i * 10, i * 10 + 10).map((key) => ({
+            type: "mrkdwn",
+            text: `${capitalizeKebabCase(key)}`,
+          })),
+        });
+      }
     }
 
     if (slackUserId) {
