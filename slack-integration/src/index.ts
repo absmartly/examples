@@ -89,6 +89,16 @@ const handleEvent = async (event: ABSmartlyEvent) => {
 			},
 		});
 
+		if (event.comment) {
+			blocks.push({
+				type: "section",
+				text: {
+					type: "mrkdwn",
+					text: `*Comment:* ${event.comment}`,
+				},
+			});
+		}
+
 		if (action === "restarted") {
 			blocks.push({
 				type: "section",
