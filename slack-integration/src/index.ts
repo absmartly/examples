@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import bodyParser from "body-parser";
 import axios from "axios";
@@ -15,6 +16,10 @@ const ABSMARTLY_USER_API_KEY = process.env.ABSMARTLY_USER_API_KEY || "";
 const capitalize = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
+
+const parseAnalysisType = (analysisType: string) => {
+  return analysisType.split("_").map(capitalize).join(" ");
+}
 
 const postToSlack = async (message: Record<string, unknown>) => {
   return await axios.post(SLACK_WEBHOOK_URL, message);
@@ -96,7 +101,7 @@ const handleEvent = async (event: Record<string, unknown>) => {
         type: "section",
         text: {
             type: "mrkdwn",
-            text: `*Analysis Type:* ${experiment.analysis_type}`
+            text: `*Analysis Type:* ${parseAnalysisType(experiment.analysis_type)}`
         }
       })
 
