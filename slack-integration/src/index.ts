@@ -26,6 +26,7 @@ const postToSlack = async (message: Record<string, unknown>) => {
 };
 
 const handleEvent = async (event: Record<string, unknown>) => {
+  console.log(event);
   const eventName = event.event_name as string;
 
   const config = {
@@ -134,7 +135,7 @@ const handleEvent = async (event: Record<string, unknown>) => {
           slackUserId
             ? `<@${slackUserId}>`
             : `<mailto:${userEmail}|${user.first_name} ${user.last_name}>`
-        } at ${date}} `,
+        } at ${date}`,
       },
     });
 
@@ -173,17 +174,24 @@ const handleEvent = async (event: Record<string, unknown>) => {
       });
     }
 
+    if (eventName === "ExperimentEdited") {
+    }
+
     if (slackUserId) {
-      console.
-
-      const res = await axios.post("https://slack.com/api/chat.postMessage", {
-        token: SLACK_TOKEN,
-        channel_id: slackUserId,
-        text: "Experiment Event",
-        blocks,
-      });
-
-      console.log(res);
+      await axios.post(
+        "https://slack.com/api/chat.postMessage",
+        {
+          channel: slackUserId,
+          text: "Experiment Event",
+          blocks,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${SLACK_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
 
     if (userId)
@@ -220,8 +228,6 @@ const handleWebhookPayload = async (payload: {
 };
 
 app.post("/", async (req, res) => {
-  console.log(req.body);
-
   try {
     await handleWebhookPayload(req.body);
   } catch (error) {
