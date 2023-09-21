@@ -17,9 +17,9 @@ const capitalize = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-const parseAnalysisType = (analysisType: string) => {
+const capitalizeKebabCase = (analysisType: string) => {
   return analysisType.split("_").map(capitalize).join(" ");
-}
+};
 
 const postToSlack = async (message: Record<string, unknown>) => {
   return await axios.post(SLACK_WEBHOOK_URL, message);
@@ -37,6 +37,50 @@ const handleEvent = async (event: Record<string, unknown>) => {
   const blocks = [];
 
   if (eventName.includes("Alert")) {
+    const experimentId = event.experiment_id as string;
+
+    const blocks = [];
+
+    const isPositiveAlert = (event: Record<string, unknown>) => {
+      return ["sample_size_reached", "group_sequential_updated"].includes(
+        event.type as string
+      );
+    };
+
+    blocks.push({
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `${
+          isPositiveAlert(event) ? "✅" : "🚨"
+        } Experiment Alert Triggered`,
+        emoji: true,
+      },
+    });
+
+    const { data: experimentRes } = await axios.get(
+      `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
+      config
+    );
+
+    const { experiment } = experimentRes;
+
+    const experimentName = experiment.name as string;
+
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> received a *${capitalizeKebabCase(
+          event.type as string
+        )}* alert at ${new Date(event.event_at as string).toLocaleString()}`,
+      },
+    });
+
+    return await postToSlack({
+      text: "Alert",
+      blocks,
+    });
   }
 
   if (eventName.includes("Experiment")) {
@@ -51,13 +95,13 @@ const handleEvent = async (event: Record<string, unknown>) => {
     const date = new Date(event.event_at as string).toLocaleString();
 
     blocks.push({
-        type: "header",
-        text: {
-            type: "plain_text",
-            text: `🧪 Experiment ${capitalize(action)}`,
-            emoji: true,
-        }
-    })
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `🧪 Experiment ${capitalize(action)}`,
+        emoji: true,
+      },
+    });
 
     const { data: userRes } = await axios.get(
       `${WEB_CONSOLE_URL}/v1/users/${userId}`,
@@ -68,66 +112,85 @@ const handleEvent = async (event: Record<string, unknown>) => {
     const userEmail = user.email as string;
 
     const { data: slackUserRes } = await axios.post(
-        "https://slack.com/api/users.lookupByEmail",
-        {
-          email: userEmail,
+      "https://slack.com/api/users.lookupByEmail",
+      {
+        email: userEmail,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${SLACK_TOKEN}`,
+          "Content-Type": "multipart/form-data",
         },
-        {
-          headers: {
-            Authorization: `Bearer ${SLACK_TOKEN}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
+      }
     );
 
     const slackUserId = slackUserRes.ok ? slackUserRes.user.id : null;
 
     blocks.push({
-        type: "section",
-        text: {
-            type: "mrkdwn",
-            text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> was ${action} by ${slackUserId ? `<@${slackUserId}>` : `<mailto:${userEmail}|${user.first_name} ${user.last_name}>`} at ${date}} `,
-        }
-    })
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `Experiment <${WEB_CONSOLE_URL}/experiments/${experimentId}|*${experimentName}*> was ${action} by ${
+          slackUserId
+            ? `<@${slackUserId}>`
+            : `<mailto:${userEmail}|${user.first_name} ${user.last_name}>`
+        } at ${date}} `,
+      },
+    });
 
     if (eventName === "ExperimentCreated") {
       const { data: experimentRes } = await axios.get(
-          `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
-          config
+        `${WEB_CONSOLE_URL}/v1/experiments/${experimentId}`,
+        config
       );
       const { experiment } = experimentRes;
 
       blocks.push({
         type: "section",
         text: {
-            type: "mrkdwn",
-            text: `*Analysis Type:* ${parseAnalysisType(experiment.analysis_type)}`
-        }
-      })
+          type: "mrkdwn",
+          text: `*Analysis Type:* ${capitalizeKebabCase(
+            experiment.analysis_type
+          )}`,
+        },
+      });
 
       const percentages = experiment.percentages.split("/");
 
       blocks.push({
         type: "section",
-        fields: experiment.variants.map((variant: {name:string, variant: number}, index: number) => ({
+        fields: experiment.variants.map(
+          (variant: { name: string; variant: number }, index: number) => ({
             type: "mrkdwn",
-            text: variant.name !== "" ? `*${variant.name} (${percentages[index]}%)*` : `*Variant ${String.fromCharCode(65 + variant.variant)} (${percentages[index]}%)*`
-        }))
-      })
+            text:
+              variant.name !== ""
+                ? `*${variant.name} (${percentages[index]}%)*`
+                : `*Variant ${String.fromCharCode(65 + variant.variant)} (${
+                    percentages[index]
+                  }%)*`,
+          })
+        ),
+      });
     }
 
-    return await postToSlack({
-      text: "Experiment Event",
-      blocks,
-    });
-  }
+    if (slackUserId) {
+      console.
 
-  if (eventName.includes("Goal")) {
-    return;
-  }
+      const res = await axios.post("https://slack.com/api/chat.postMessage", {
+        token: SLACK_TOKEN,
+        channel_id: slackUserId,
+        text: "Experiment Event",
+        blocks,
+      });
 
-  if (eventName.includes("Metric")) {
-    return;
+      console.log(res);
+    }
+
+    if (userId)
+      return await postToSlack({
+        text: "Experiment Event",
+        blocks,
+      });
   }
 
   return await postToSlack({
