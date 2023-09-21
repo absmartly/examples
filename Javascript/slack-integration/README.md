@@ -2,7 +2,7 @@
 
 This repository contains an example of how to integrate ABsmartly with Slack.
 
-An article on how this example was created can be found [TODO].
+An article on how the beginnings of this example can be found [on the absmartly docs](https://docs.absmartly.com/docs/examples/slack-integration).
 
 ## Setup
 
