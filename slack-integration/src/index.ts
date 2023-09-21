@@ -1,8 +1,9 @@
 import "dotenv/config";
 import express from "express";
 import bodyParser from "body-parser";
-import { getExperiment, getSlackUserByEmail, getUser, postToSlack } from "./api";
-import { ABSmartlyEvent } from "./models";
+import { getSlackUserByEmail, postToSlack } from "./slack.api";
+import { getExperiment, getUser } from "./absmartly.api";
+import { ABSmartlyEvent } from "./absmartly.models";
 import { extractAction, capitalize, capitalizeKebabCase, isPositiveAlert } from "./utils";
 
 const app = express();
