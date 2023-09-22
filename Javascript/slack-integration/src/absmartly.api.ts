@@ -11,11 +11,19 @@ const ABSmartlyConfig = {
 };
 
 const getExperiment = async (id: string | number) => {
-	return await axios.get<{ experiment: Experiment }>(`${WEB_CONSOLE_URL}/v1/experiments/${id}`, ABSmartlyConfig);
+	try {
+		return await axios.get<{ experiment: Experiment }>(`${WEB_CONSOLE_URL}/v1/experiments/${id}`, ABSmartlyConfig);
+	} catch (error) {
+		throw new Error(error);
+	}
 };
 
 const getUser = async (id: string | number) => {
-	return await axios.get(`${WEB_CONSOLE_URL}/v1/users/${id}`, ABSmartlyConfig);
+	try {
+		return await axios.get(`${WEB_CONSOLE_URL}/v1/users/${id}`, ABSmartlyConfig);
+	} catch (error) {
+		throw new Error(error);
+	}
 };
 
 export { getExperiment, getUser };
