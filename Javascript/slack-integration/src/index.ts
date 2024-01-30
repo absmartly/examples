@@ -61,7 +61,6 @@ const handleEvent = async (event: ABSmartlyEvent) => {
 		const action = extractAction(event);
 		const experimentId = action === "restarted" ? (event.new_experiment_id as string) : (event.id as string);
 
-		const experimentName = event.name as string;
 		const userId = event.user_id as string;
 		const date = new Date(event.event_at as string).toLocaleString();
 
@@ -72,6 +71,7 @@ const handleEvent = async (event: ABSmartlyEvent) => {
 			const { data: userRes } = await getUser(userId);
 			const { user } = userRes;
 
+			const experimentName = (experiment.display_name ?? experiment.name) as string;
 			const userEmail = user.email as string;
 			const { data: slackUserRes } = await getSlackUserByEmail(userEmail);
 			const slackUserId = slackUserRes.ok ? slackUserRes.user.id : null;
